@@ -1,14 +1,12 @@
 package com.softwaremill.jox.structured;
 
-import static com.softwaremill.jox.structured.Scopes.supervised;
-
-import java.io.Serializable;
 import java.util.ArrayDeque;
 import java.util.List;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeoutException;
 
-import com.softwaremill.jox.Channel;
+import static com.softwaremill.jox.structured.Scopes.supervised;
 
 public final class Race {
     /**
@@ -24,10 +22,10 @@ public final class Race {
                         f::call,
                         () -> {
                             Thread.sleep(millis);
-                            return TIMEOUT;
+                            return MagicConstants.TIMEOUT;
                         });
 
-        if (result == TIMEOUT) {
+        if (result == MagicConstants.TIMEOUT) {
             throw new TimeoutException("Computation didn't finish within " + millis + "ms");
         } else {
             //noinspection unchecked
@@ -62,16 +60,17 @@ public final class Race {
         try {
             return supervised(
                     scope -> {
-                        var branchResults = Channel.newBufferedChannel(fs.size());
+                        var branchResults = new ArrayBlockingQueue<>(fs.size());
                         for (Callable<T> f : fs) {
                             scope.forkUnsupervised(
                                     () -> {
                                         try {
                                             T r = f.call();
-                                            branchResults.send(
-                                                    r == null ? NULL_WRAPPER_IN_RACE : r);
+                                            branchResults.add(r == null
+                                                    ? MagicConstants.NULL_WRAPPER_IN_RACE
+                                                    : r);
                                         } catch (Exception e) {
-                                            branchResults.send(new ExceptionWrapperInRace(e));
+                                            branchResults.add(new ExceptionWrapperInRace(e));
                                         }
                                         return null;
                                     });
@@ -79,10 +78,10 @@ public final class Race {
 
                         int left = fs.size();
                         while (left-- > 0) {
-                            var first = branchResults.receive();
+                            var first = branchResults.take();
                             if (first instanceof ExceptionWrapperInRace(Exception e)) {
                                 exceptions.add(e);
-                            } else if (first == NULL_WRAPPER_IN_RACE) {
+                            } else if (first == MagicConstants.NULL_WRAPPER_IN_RACE) {
                                 return null;
                             } else {
                                 //noinspection unchecked
@@ -144,11 +143,11 @@ public final class Race {
         }
     }
 
-    private static final Serializable NULL_WRAPPER_IN_RACE = "$Race$NULL_WRAPPER_IN_RACE";
-
     private record ExceptionWrapperInRace(Exception e) {}
 
     private record ExceptionWrapperInRaceResult(Exception e) {}
-
-    private static final Serializable TIMEOUT = "$Race$TIMEOUT";
+}
+enum MagicConstants {
+    NULL_WRAPPER_IN_RACE,
+    TIMEOUT
 }
