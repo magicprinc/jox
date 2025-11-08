@@ -1,15 +1,18 @@
 package com.softwaremill.jox;
 
-import static com.softwaremill.jox.TestUtil.forkVoid;
-import static com.softwaremill.jox.TestUtil.scoped;
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingDeque;
 
-import org.junit.jupiter.api.Test;
+import static com.softwaremill.jox.TestUtil.forkVoid;
+import static com.softwaremill.jox.TestUtil.scoped;
+import static org.junit.jupiter.api.Assertions.*;
 
 /** Channel tests which are run for various capacities. */
 public class ChannelTest {
@@ -80,5 +83,88 @@ public class ChannelTest {
     void testNullItem() throws InterruptedException {
         Channel<Object> ch = Channel.newBufferedChannel(4);
         assertThrows(NullPointerException.class, () -> ch.send(null));
+    }
+
+    /// mem 4096kB
+    /// total 75_457ms
+    @Test  @Disabled
+    void benchmarkChannel () throws InterruptedException {
+        var item = "same";
+        var ch = Channel.newBufferedChannel(1_000_000_000);
+        assertEquals(1_000_000_000, ch.getCapacity());
+        System.out.println("0) created");
+
+        long used0 = gc();
+        long t = System.nanoTime();
+
+        System.out.println("1) send");
+        for (int i = 0; i < ch.getCapacity(); i++)
+            ch.send(item);
+        System.out.println("send benchmark: " + (System.nanoTime() - t)/1000/1000.0);
+        System.out.println("memory: " + (gc() - used0)/1024.0);
+
+        System.out.println("2) receive");
+        for (int i = 0; i < ch.getCapacity(); i++)
+            assertSame(item, ch.receive());
+        System.out.println("send+receive benchmark: " + (System.nanoTime() - t)/1000/1000.0);
+    }
+
+    /// memory 901.23kB
+    /// total 30_087ms
+    @Test  @Disabled
+    void benchmarkABQ () throws InterruptedException {
+        var item = "same";
+        int max = 1_000_000_000;
+        var ch = new ArrayBlockingQueue<>(max);
+        assertEquals(max, ch.remainingCapacity());
+        System.out.println("0) created");
+
+        long used0 = gc();
+        long t = System.nanoTime();
+
+        System.out.println("1) send");
+        for (int i = 0; i < max; i++)
+            ch.put(item);
+        System.out.println("send benchmark: " + (System.nanoTime() - t)/1000/1000.0);
+        System.out.println("memory: " + (gc() - used0)/1024.0);
+
+        System.out.println("2) receive");
+        for (int i = 0; i < max; i++)
+            assertSame(item, ch.take());
+        System.out.println("send+receive benchmark: " + (System.nanoTime() - t)/1000/1000.0);
+    }
+
+    /// memory OOM kB
+    /// total > 3mi
+    @Test  @Disabled
+    void benchmarkLBQ () throws InterruptedException {
+        var item = "same";
+        int max = 1_000_000_000;
+        var ch = new LinkedBlockingDeque<>(max);
+        assertEquals(max, ch.remainingCapacity());
+        System.out.println("0) created");
+
+        long used0 = gc();
+        long t = System.nanoTime();
+
+        System.out.println("1) send");
+        for (int i = 0; i < max; i++)
+            ch.put(item);
+        System.out.println("send benchmark: " + (System.nanoTime() - t)/1000/1000.0);
+        System.out.println("memory: " + (gc() - used0)/1024.0);
+
+        System.out.println("2) receive");
+        for (int i = 0; i < max; i++)
+            assertSame(item, ch.take());
+        System.out.println("send+receive benchmark: " + (System.nanoTime() - t)/1000/1000.0);
+    }
+
+    public static long gc () {
+        Runtime runtime = Runtime.getRuntime();
+//        for (int i = 0; i < 3; i++){
+//            runtime.gc();
+//            Thread.yield();
+//        }
+        return runtime.totalMemory() - runtime.freeMemory();
     }
 }

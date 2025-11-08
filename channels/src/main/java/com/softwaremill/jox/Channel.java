@@ -97,6 +97,8 @@ public final class Channel<T> implements Source<T>, Sink<T> {
     private final int capacity;
     final boolean isRendezvous;
 
+    public int getCapacity (){ return capacity; }
+
     // final boolean isUnlimited = capacity < 0; !isUnlimited = capacity >= 0
 
     // mutable state
@@ -199,8 +201,10 @@ public final class Channel<T> implements Source<T>, Sink<T> {
         var currentSegment = bufferEndSegment;
         // the number of segments where all cells are processed, or some are processed (last segment
         // of the buffer) = Math.ceil((double) capacity / Segment.SEGMENT_SIZE)
-        int segmentsToProcess = capacity <= 0 ? 0
-                : (int)((capacity + Segment.SEGMENT_SIZE - 1L) / Segment.SEGMENT_SIZE);
+        int segmentsToProcess =
+                capacity <= 0
+                        ? 0
+                        : (int) ((capacity + Segment.SEGMENT_SIZE - 1L) / Segment.SEGMENT_SIZE);
 
         for (int segmentId = 0; segmentId < segmentsToProcess; segmentId++) {
             currentSegment =
