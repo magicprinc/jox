@@ -47,5 +47,11 @@ public class ScopeTest {
         ExecutionException ee = assertThrows(ExecutionException.class, fork::cancel);
         assertInstanceOf(InterruptedException.class, ee.getCause());
         assertFalse(run.get());
+
+        ee = assertThrows(ExecutionException.class, fork::join);
+        assertInstanceOf(InterruptedException.class, ee.getCause());
+
+        ee = assertThrows(ExecutionException.class, fork::cancel);
+        assertInstanceOf(InterruptedException.class, ee.getCause());
     }
 }
