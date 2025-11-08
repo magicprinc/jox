@@ -2,13 +2,15 @@ package com.softwaremill.jox.structured;
 
 import static com.softwaremill.jox.structured.Scopes.supervised;
 
+import java.io.Serializable;
 import java.util.ArrayDeque;
 import java.util.List;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeoutException;
 
-public class Race {
+import com.softwaremill.jox.Channel;
+
+public final class Race {
     /**
      * The result of computation {@code f}, if it took less than {@code millis} ms, and a {@link
      * TimeoutException} otherwise.
@@ -22,10 +24,10 @@ public class Race {
                         f::call,
                         () -> {
                             Thread.sleep(millis);
-                            return new Timeout();
+                            return TIMEOUT;
                         });
 
-        if (result instanceof Timeout) {
+        if (result == TIMEOUT) {
             throw new TimeoutException("Computation didn't finish within " + millis + "ms");
         } else {
             //noinspection unchecked
@@ -60,36 +62,32 @@ public class Race {
         try {
             return supervised(
                     scope -> {
-                        var branchResults = new ArrayBlockingQueue<>(fs.size());
+                        var branchResults = Channel.newBufferedChannel(fs.size());
                         for (Callable<T> f : fs) {
                             scope.forkUnsupervised(
                                     () -> {
                                         try {
-                                            var r = f.call();
-                                            if (r == null) {
-                                                branchResults.add(new NullWrapperInRace());
-                                            } else {
-                                                branchResults.add(r);
-                                            }
+                                            T r = f.call();
+                                            branchResults.send(
+                                                    r == null ? NULL_WRAPPER_IN_RACE : r);
                                         } catch (Exception e) {
-                                            branchResults.add(new ExceptionWrapperInRace(e));
+                                            branchResults.send(new ExceptionWrapperInRace(e));
                                         }
                                         return null;
                                     });
                         }
 
-                        var left = fs.size();
-                        while (left > 0) {
-                            var first = branchResults.take();
+                        int left = fs.size();
+                        while (left-- > 0) {
+                            var first = branchResults.receive();
                             if (first instanceof ExceptionWrapperInRace(Exception e)) {
                                 exceptions.add(e);
-                            } else if (first instanceof NullWrapperInRace) {
+                            } else if (first == NULL_WRAPPER_IN_RACE) {
                                 return null;
                             } else {
                                 //noinspection unchecked
                                 return (T) first;
                             }
-                            left -= 1;
                         }
 
                         // if we get here, there must be an exception
@@ -146,11 +144,11 @@ public class Race {
         }
     }
 
-    private record NullWrapperInRace() {}
+    private static final Serializable NULL_WRAPPER_IN_RACE = "NULL_WRAPPER_IN_RACE";
 
     private record ExceptionWrapperInRace(Exception e) {}
 
     private record ExceptionWrapperInRaceResult(Exception e) {}
 
-    private record Timeout() {}
+    private static final Serializable TIMEOUT = "TIMEOUT";
 }
