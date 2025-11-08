@@ -3,12 +3,14 @@ package com.softwaremill.jox;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.LinkedBlockingQueue;
 
 import static com.softwaremill.jox.TestUtil.forkVoid;
 import static com.softwaremill.jox.TestUtil.scoped;
@@ -166,5 +168,57 @@ public class ChannelTest {
 //            Thread.yield();
 //        }
         return runtime.totalMemory() - runtime.freeMemory();
+    }
+
+    /// mem 207_517 kB
+    /// time 180 ms
+    @Test
+    void testActors () throws InterruptedException {
+        var item = "same";
+        int max = 1_000_000;
+        var ch = new ArrayList<Channel<String>>(max);
+
+        long used0 = gc();
+        long t = System.nanoTime();
+
+        System.out.println("1) send");
+        for (int i = 0; i < max; i++){
+            var x = Channel.<String>newUnlimitedChannel();
+            x.send(item);
+            ch.add(x);
+        }
+        System.out.println("send benchmark: " + (System.nanoTime() - t)/1000/1000.0);
+        System.out.println("memory: " + (gc() - used0)/1024.0);
+
+        System.out.println("2) receive");
+        for (int i = 0; i < max; i++){
+            assertSame(item, ch.get(i).receive());
+        }
+        System.out.println("send+receive benchmark: " + (System.nanoTime() - t)/1000/1000.0);
+    }
+
+    @Test
+    void testActorsLBQ () throws InterruptedException {
+        var item = "same";
+        int max = 1_000_000;
+        var ch = new ArrayList<LinkedBlockingQueue<String>>(max);
+
+        long used0 = gc();
+        long t = System.nanoTime();
+
+        System.out.println("1) send");
+        for (int i = 0; i < max; i++){
+            var x = new LinkedBlockingQueue<String>();
+            x.offer(item);
+            ch.add(x);
+        }
+        System.out.println("send benchmark: " + (System.nanoTime() - t)/1000/1000.0);
+        System.out.println("memory: " + (gc() - used0)/1024.0);
+
+        System.out.println("2) receive");
+        for (int i = 0; i < max; i++){
+            assertSame(item, ch.get(i).take());
+        }
+        System.out.println("send+receive benchmark: " + (System.nanoTime() - t)/1000/1000.0);
     }
 }
