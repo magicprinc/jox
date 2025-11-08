@@ -3,20 +3,23 @@ package com.softwaremill.jox;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 
-final class Segment {
+sealed class Segment permits SegmentRendezvousOrUnlimited {
     static final int SEGMENT_SIZE = 32; // 2^5
     private static final int PROCESSED_SHIFT =
             6; // to store values between 0 and 32 (inclusive) we need 6 bits
     private static final int POINTERS_SHIFT = 12;
-    static final Segment NULL_SEGMENT = new Segment(-1, null, 0, false);
+    static final Segment NULL_SEGMENT = new Segment(-1, null, 0);
 
     /** Used in {@code next} to indicate that the segment is closed. */
-    private static final Segment CLOSED = new Segment(-1, null, 0, false);
+    private static final Segment CLOSED = new Segment(-1, null, 0);
 
     // immutable state
 
     private final long id;
-    private final boolean isRendezvousOrUnlimited;
+
+    boolean isRendezvousOrUnlimited() {
+        return false;
+    }
 
     // mutable state
 
@@ -66,14 +69,19 @@ final class Segment {
 
     //
 
-    Segment(long id, Segment prev, int pointers, boolean isRendezvousOrUnlimited) {
+    static Segment of(long id, Segment prev, int pointers, boolean isRendezvousOrUnlimited) {
+        return isRendezvousOrUnlimited
+                ? new SegmentRendezvousOrUnlimited(id, prev, pointers)
+                : new Segment(id, prev, pointers);
+    }
+
+    Segment(long id, Segment prev, int pointers) {
         this.id = id;
         this.prev = prev;
         this.pointers_notProcessed_notInterrupted =
                 SEGMENT_SIZE
-                        + (isRendezvousOrUnlimited ? 0 : (SEGMENT_SIZE << PROCESSED_SHIFT))
+                        + (isRendezvousOrUnlimited() ? 0 : (SEGMENT_SIZE << PROCESSED_SHIFT))
                         + (pointers << POINTERS_SHIFT);
-        this.isRendezvousOrUnlimited = isRendezvousOrUnlimited;
     }
 
     long getId() {
@@ -180,7 +188,7 @@ final class Segment {
      * removed.
      */
     void cellInterruptedSender() {
-        if (isRendezvousOrUnlimited) {
+        if (isRendezvousOrUnlimited()) {
             // we're not counting processed cells
             if ((int) POINTERS_NOT_PROCESSED_NOT_INTERRUPTED.getAndAdd(this, -1) == 1) remove();
         } else {
@@ -327,7 +335,7 @@ final class Segment {
             } else if (n == null) {
                 // create a new segment if needed
                 var newSegment =
-                        new Segment(current.getId() + 1, current, 0, start.isRendezvousOrUnlimited);
+                        of(current.getId() + 1, current, 0, start.isRendezvousOrUnlimited());
                 if (current.setNextIfNull(newSegment)) {
                     if (current.isRemoved()) {
                         // the current segment was a tail segment, so if it was logically removed,
@@ -410,5 +418,17 @@ final class Segment {
 
     void setNext(Segment newNext) {
         NEXT.set(this, newNext);
+    }
+}
+
+final class SegmentRendezvousOrUnlimited extends Segment {
+
+    SegmentRendezvousOrUnlimited(long id, Segment prev, int pointers) {
+        super(id, prev, pointers);
+    }
+
+    @Override
+    boolean isRendezvousOrUnlimited() {
+        return true;
     }
 }

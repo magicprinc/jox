@@ -90,10 +90,10 @@ public class SegmentTest {
 
     static Segment[] createSegmentChain(int count, long id, boolean isRendezvous) {
         var segments = new Segment[count];
-        var thisSegment = new Segment(id, null, 0, isRendezvous);
+        var thisSegment = Segment.of(id, null, 0, isRendezvous);
         segments[0] = thisSegment;
         for (int i = 1; i < count; i++) {
-            var nextSegment = new Segment(id + i, thisSegment, 0, isRendezvous);
+            var nextSegment = Segment.of(id + i, thisSegment, 0, isRendezvous);
             thisSegment.setNext(nextSegment);
             segments[i] = nextSegment;
             thisSegment = nextSegment;
@@ -105,5 +105,22 @@ public class SegmentTest {
         for (int i = 0; i < SEGMENT_SIZE; i++) {
             s.cellInterruptedSender();
         }
+    }
+
+    @Test
+    void testInheritance() {
+        Segment s = Segment.of(1, null, 100, false);
+        assertEquals(
+                "Segment{id=1, next=null, prev=null, pointers=100, notProcessed=32,"
+                        + " notInterrupted=32}",
+                s.toString());
+        assertFalse(s.isRendezvousOrUnlimited());
+
+        s = Segment.of(1, null, 100, true);
+        assertEquals(
+                "Segment{id=1, next=null, prev=null, pointers=100, notProcessed=0,"
+                        + " notInterrupted=32}",
+                s.toString());
+        assertTrue(s.isRendezvousOrUnlimited());
     }
 }

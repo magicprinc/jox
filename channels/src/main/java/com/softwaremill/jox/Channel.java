@@ -175,7 +175,7 @@ public final class Channel<T> implements Source<T>, Sink<T> {
         var isRendezvousOrUnlimited = isRendezvous || isUnlimited;
 
         var firstSegment =
-                new Segment(0, null, isRendezvousOrUnlimited ? 2 : 3, isRendezvousOrUnlimited);
+                Segment.of(0, null, isRendezvousOrUnlimited ? 2 : 3, isRendezvousOrUnlimited);
 
         sendSegment = firstSegment;
         receiveSegment = firstSegment;
@@ -199,8 +199,10 @@ public final class Channel<T> implements Source<T>, Sink<T> {
         var currentSegment = bufferEndSegment;
         // the number of segments where all cells are processed, or some are processed (last segment
         // of the buffer) = Math.ceil((double) capacity / Segment.SEGMENT_SIZE)
-        int segmentsToProcess = capacity <= 0 ? 0
-                : (int)((capacity + Segment.SEGMENT_SIZE - 1L) / Segment.SEGMENT_SIZE);
+        int segmentsToProcess =
+                capacity <= 0
+                        ? 0
+                        : (int) ((capacity + Segment.SEGMENT_SIZE - 1L) / Segment.SEGMENT_SIZE);
 
         for (int segmentId = 0; segmentId < segmentsToProcess; segmentId++) {
             currentSegment =
