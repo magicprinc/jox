@@ -95,7 +95,10 @@ public final class Channel<T> implements Source<T>, Sink<T> {
     // immutable state
 
     private final int capacity;
-    final boolean isRendezvous;
+
+    final boolean isRendezvous() {
+        return capacity == 0L;
+    }
 
     // final boolean isUnlimited = capacity < 0; !isUnlimited = capacity >= 0
 
@@ -170,9 +173,8 @@ public final class Channel<T> implements Source<T>, Sink<T> {
                             + " channels).");
 
         this.capacity = capacity;
-        isRendezvous = capacity == 0L;
         boolean isUnlimited = capacity == UNLIMITED_CAPACITY;
-        var isRendezvousOrUnlimited = isRendezvous || isUnlimited;
+        var isRendezvousOrUnlimited = isRendezvous() || isUnlimited;
 
         var firstSegment =
                 Segment.of(0, null, isRendezvousOrUnlimited ? 2 : 3, isRendezvousOrUnlimited);
@@ -357,7 +359,7 @@ public final class Channel<T> implements Source<T>, Sink<T> {
 
             if (state == null) {
                 // reading the buffer end & receiver's counter if needed: !isUnlimited
-                if (capacity >= 0 && s >= (isRendezvous ? 0 : bufferEnd) && s >= receivers) {
+                if (capacity >= 0 && s >= (isRendezvous() ? 0 : bufferEnd) && s >= receivers) {
                     // cell is empty, and no receiver, not in buffer -> suspend
                     if (select != null) {
                         // cell is empty, no receiver, and we are in a select -> store the select
@@ -375,7 +377,7 @@ public final class Channel<T> implements Source<T>, Sink<T> {
                         // receiver can use it
                         var c = new Continuation(value);
                         if (segment.casCell(i, null, c)) {
-                            if (c.await(segment, i, isRendezvous) == ChannelClosedMarker.CLOSED) {
+                            if (c.await(segment, i, isRendezvous()) == ChannelClosedMarker.CLOSED) {
                                 return SendResult.CLOSED;
                             } else {
                                 return SendResult.AWAITED;
@@ -557,7 +559,7 @@ public final class Channel<T> implements Source<T>, Sink<T> {
                         var c = new Continuation(null);
                         if (segment.casCell(i, state, c)) {
                             expandBuffer();
-                            var result = c.await(segment, i, isRendezvous);
+                            var result = c.await(segment, i, isRendezvous());
                             if (result == ChannelClosedMarker.CLOSED) {
                                 return ReceiveResult.CLOSED;
                             } else {
