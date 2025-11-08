@@ -259,7 +259,7 @@ public class Select {
                             "Channel " + chi + " is used in multiple clauses");
                 }
             }
-            allRendezvous = allRendezvous && (chi == null || chi.isRendezvous);
+            allRendezvous = allRendezvous && (chi == null || chi.isRendezvous());
         }
         return allRendezvous;
     }
