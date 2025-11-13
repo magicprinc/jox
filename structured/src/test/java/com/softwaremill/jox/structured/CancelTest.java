@@ -1,10 +1,10 @@
 package com.softwaremill.jox.structured;
 
-import static org.junit.jupiter.api.Assertions.assertIterableEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Semaphore;
 
@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 public class CancelTest {
     @Test
     void testCancelBlocksUntilForkCompletes() throws Exception {
-        Trail trail = new Trail();
+        var trail = new Trail();
         Scopes.supervised(
                 scope -> {
                     var f =
@@ -23,7 +23,7 @@ public class CancelTest {
                                         try {
                                             Thread.sleep(500);
                                             trail.add("main done");
-                                        } catch (InterruptedException e) {
+                                        } catch (InterruptedException | CancellationException e) {
                                             trail.add("interrupted");
                                             Thread.sleep(500);
                                             trail.add("interrupted done");
@@ -42,17 +42,64 @@ public class CancelTest {
                     Thread.sleep(1000);
                     return null;
                 });
+
+        System.out.println(trail.get()); // [started, cancel done, interrupted, interrupted done]
         assertIterableEquals(
-                Arrays.asList("started", "interrupted", "interrupted done", "cancel done"),
+                Arrays.asList("started", "cancel done", "interrupted", "interrupted done"),
                 trail.get());
     }
 
     @Test
-    void testCancelBlocksUntilForkCompletesStressTest() throws Exception {
+    void testCancelBlocksUntilForkCompletesStressTest1() throws Exception {
         for (int i = 1; i <= 20; i++) {
-            Trail trail = new Trail();
-            Semaphore s = new Semaphore(0);
-            int finalI = i;
+            var trail = new Trail();
+            var s = new Semaphore(0);
+            var x =
+                    Scopes.supervised(
+                            scope -> {
+                                var f =
+                                        scope.forkCancellable(
+                                                () -> {
+                                                    try {
+                                                        s.acquire();
+                                                        trail.add("main done");
+                                                    } catch (InterruptedException e) {
+                                                        trail.add("interrupted");
+                                                        Thread.sleep(100);
+                                                        trail.add("interrupted done");
+                                                    }
+                                                    return null;
+                                                });
+
+                                Thread.sleep(
+                                        555); // interleave immediate cancels and after the fork
+                                // starts
+                                // (probably)
+                                try {
+                                    f.cancel();
+                                } catch (ExecutionException e) {
+                                    // ignore
+                                }
+                                s.release(1); // the acquire should be interrupted
+                                trail.add("cancel done");
+                                Thread.sleep(100);
+                                assertTrue(
+                                        ((CancellableForkUsingResult<Object>) f)
+                                                .isCompletedExceptionally());
+                                return null;
+                            });
+
+            System.out.println(trail.get()); // [cancel done, main done]
+            assertIterableEquals(Arrays.asList("cancel done", "main done"), trail.get());
+            assertNull(x);
+        }
+    }
+
+    @Test
+    void testCancelBlocksUntilForkCompletesStressTest2() throws Exception {
+        for (int i = 1; i <= 20; i++) {
+            var trail = new Trail();
+            var s = new Semaphore(0);
             Scopes.supervised(
                     scope -> {
                         var f =
@@ -69,9 +116,6 @@ public class CancelTest {
                                             return null;
                                         });
 
-                        if (finalI % 2 == 0)
-                            Thread.sleep(
-                                    1); // interleave immediate cancels and after the fork starts
                         // (probably)
                         try {
                             f.cancel();
@@ -81,16 +125,16 @@ public class CancelTest {
                         s.release(1); // the acquire should be interrupted
                         trail.add("cancel done");
                         Thread.sleep(100);
+                        assertTrue(
+                                ((CancellableForkUsingResult<Object>) f)
+                                        .isCompletedExceptionally());
                         return null;
                     });
-            if (trail.get().size() == 1) {
-                assertIterableEquals(
-                        List.of("cancel done"), trail.get()); // the fork wasn't even started
-            } else {
-                assertIterableEquals(
-                        Arrays.asList("interrupted", "interrupted done", "cancel done"),
-                        trail.get());
-            }
+
+            System.out.println(trail.get()); // [cancel done, main done]
+            assertIterableEquals(
+                    List.of("cancel done"), trail.get()); // the fork wasn't even started
+            assertEquals(1, trail.get().size());
         }
     }
 

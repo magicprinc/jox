@@ -230,18 +230,18 @@ public final class Scope {
                                 () -> {
                                     // "else" means that the fork is already cancelled, so doing
                                     // nothing in that case
-                                    if (result.checkNotStartedThenStart()) {
+                                    if (!result.isCancelled() && !result.isDone()) {
                                         try {
                                             result.complete(f.call());
                                         } catch (Throwable e) {
                                             result.completeExceptionally(e);
                                         }
                                     }
-
                                     // the nested scope can now finish
                                     result.done.release();
                                     return null;
                                 });
+
         result.done.acquire();
         return null;
     }

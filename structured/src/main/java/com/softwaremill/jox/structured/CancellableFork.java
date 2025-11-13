@@ -1,7 +1,5 @@
 package com.softwaremill.jox.structured;
 
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.VarHandle;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Semaphore;
 
@@ -23,19 +21,6 @@ public interface CancellableFork<T> extends Fork<T> {
 final class CancellableForkUsingResult<T> extends ForkUsingResult<T> implements CancellableFork<T> {
     /** interrupt signal */
     final Semaphore done = new Semaphore(0);
-    private volatile boolean started;
-    /** VarHandle for atomic operations on the 'started' field */
-    private static final VarHandle STARTED;
-    static {
-        try {
-            MethodHandles.Lookup l = // MethodHandles.lookup()
-                    MethodHandles.privateLookupIn(
-                            CancellableForkUsingResult.class, MethodHandles.lookup());
-            STARTED = l.findVarHandle(CancellableForkUsingResult.class, "started", boolean.class);
-        } catch (ReflectiveOperationException e) {
-            throw new ExceptionInInitializerError(e);
-        }
-    }
 
     @Override
     public T cancel() throws InterruptedException, ExecutionException {
@@ -48,12 +33,7 @@ final class CancellableForkUsingResult<T> extends ForkUsingResult<T> implements 
         // will cause the scope to end, interrupting the task if it hasn't yet finished (or
         // potentially never starting it)
         done.release();
-        if (checkNotStartedThenStart()) { // !started.getAndSet(true)
-            completeExceptionally(new InterruptedException("fork was cancelled before it started"));
-        }
-    }
-
-    boolean checkNotStartedThenStart() {
-        return (Boolean) STARTED.getAndSet(this, true) == false;
+        // ~ cancel(true);// Future#cancel: CompletableFuture guarantees the invariant
+        completeExceptionally(new InterruptedException("fork was cancelled before it started"));
     }
 }
